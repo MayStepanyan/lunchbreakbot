@@ -4,16 +4,25 @@ A telegram bot that that collects and aggregates multiple users orders within a 
 
 # Usage
 
-Place a token in .env file:
+Place a telegram bot token and Redis Client credentials in .env file:
 
 ```dotenv
 TOKEN="YOUR_BOT_TOKEN"
+HOST="DB_HOST"
+PORT="DB_PORT"
+#OTHER POSSIBLE ARGUMENTS LIKE PASSWORD etc
 ```
 
 and run
 
 ```bash
 python -m app.main
+```
+
+For example, you can run the Redis locally like:
+
+```bash
+docker run -d --name redis-stack-server -p 6379:6379 redis/redis-stack-server:latest
 ```
 
 # Available commands
@@ -28,7 +37,7 @@ commands will be available
 
 # Roadmap
 
-- [ ] Move to Redis db
+- [X] Move to Redis db
 - [ ] Enable per user order removal
 - [ ] Enable per user order summarization
 - [ ] Enable reminders to start ordering

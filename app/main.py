@@ -1,31 +1,45 @@
+"""
+Main endpoints
+"""
+
+import redis
+from telebot import TeleBot
 from telebot.types import Message
 
-from app.globals import SETTINGS
-from app.orders import Order, OrderCollectorBot
-
-# Define states for the conversation flow
-START, COLLECTING_ORDERS = range(2)
+from app.client import OrderHandler
+from app.globals import BOT_SETTINGS, CLIENT_SETTINGS
+from app.orders import summarize
 
 # Initialize bot
-bot = OrderCollectorBot(SETTINGS.token)
+bot = TeleBot(**BOT_SETTINGS.model_dump())
+redis_client = redis.Redis(**CLIENT_SETTINGS.model_dump())
+order_manager = OrderHandler(client=redis_client)
 
 
 @bot.message_handler(commands=['start'])
 def start_order(message: Message) -> None:
     """Start collecting orders"""
-    bot.current_orders.clear()  # Clear existing orders
+    order_manager.start_collection(conversation_id=message.chat.id)
+    # TODO move standard replies to constants
     bot.reply_to(message, "It's time to place your lunch orders! Send your order(s). Type /done when finished.")
-    bot.collecting = True
 
 
-@bot.message_handler(commands=['done'])
-def finish(message: Message) -> None:
+@bot.message_handler(commands=["orders"])
+def aggregate(message: Message) -> None:
+    """Summarize all orders"""
+    all_orders = order_manager.get_all_orders(conversation_id=message.chat.id)
+    order_summary = summarize(all_orders)
+    bot.reply_to(message, f"Today's Orders:\n {order_summary}")
+
+
+@bot.message_handler(commands=["done"])
+def done(message: Message) -> None:
     """Finish collecting orders"""
-    aggregate_orders(message)
-    bot.collecting = False
+    aggregate(message=message)
+    order_manager.clear_orders(conversation_id=message.chat.id)
 
 
-@bot.message_handler(commands=['cancel'])
+@bot.message_handler(commands=["cancel"])
 def cancel(message: Message):
     """Cancel the order collection """
     bot.send_message(chat_id=message.chat.id, text="Order collection canceled. Type /start to start over")
@@ -33,28 +47,20 @@ def cancel(message: Message):
 
 @bot.message_handler(func=lambda message: (not message.text.startswith('/')))
 def collect_order(message: Message) -> None:
-    """Collect orders until /done is received"""
-    if not bot.collecting:
+    """Collect messages as orders until /done is received"""
+
+    if not order_manager.is_collecting(conversation_id=message.chat.id):
         return
 
-    username = message.from_user.username
-    items = message.text.split("\n")
-    if username not in bot.current_orders:
-        bot.current_orders[username] = Order(username=username,
-                                             name=message.from_user.first_name,
-                                             order=items)
-    else:
-        bot.current_orders[username].order.extend(items)
-    reply = (f"Added {','.join(items)} to {username} order.\n\n"
-             f"Current order for {username}:\n {bot.current_orders[username].order_str}")
+    username = message.from_user.username or message.from_user.id
+    order = message.text
+    order_manager.add_order(conversation_id=message.chat.id,
+                            username=username,
+                            order=order)
+
+    reply = (f"Added {order} to {username} order.\n\n"
+             f"Current order for {username}:\n "f"{order_manager.get_user_orders(conversation_id=message.chat.id, username=username)}")
     bot.reply_to(message, reply)
-
-
-@bot.message_handler(commands=["orders"])
-def aggregate_orders(message: Message) -> None:
-    """Summarize all orders"""
-    order_summary = bot.summarize_orders()
-    bot.reply_to(message, f"Today's Orders:\n {order_summary}")
 
 
 if __name__ == "__main__":
