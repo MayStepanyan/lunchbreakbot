@@ -2,6 +2,14 @@
 
 A telegram bot that that collects and aggregates multiple users orders within a group chat
 
+# Prerequisites
+
+You need `poetry==1.5.1` to install the requirements:
+
+```bash
+poetry install
+```
+
 # Usage
 
 Place a telegram bot token and Redis Client credentials in .env file:
